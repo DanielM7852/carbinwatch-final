@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+backend/venv/
+.venv/
+env/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.pem.crt
+*.pem.key
+certs/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+.cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# PlatformIO / Arduino
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# ML model binaries (use Git LFS or releases)
+*.bin
+*.tflite
+*.onnx
+*.pt
+*.pth
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
