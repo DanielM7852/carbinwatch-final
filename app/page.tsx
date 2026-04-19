@@ -1,65 +1,177 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState, useRef, useCallback } from "react";
+import VolumeGauge from "@/components/VolumeGauge";
+import ItemFeed from "@/components/ItemFeed";
+import WasteClassifier from "@/components/WasteClassifier";
+import { classifyItem } from "@/lib/classifier";
+import type { WasteItem } from "@/lib/wasteSnapshot";
+
+const LIVE_POLL_MS = 1000;
+
+/** Avoid SyntaxError when the dev server returns an HTML error page instead of JSON. */
+async function readJsonBody(
+  res: Response,
+  label: string
+): Promise<{ ok: true; data: unknown } | { ok: false; message: string }> {
+  const text = await res.text();
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("<")) {
+    return {
+      ok: false,
+      message: `${label}: server returned HTML (${res.status}) instead of JSON — open ${label} in the browser or check the terminal for compile/runtime errors on that route.`,
+    };
+  }
+  try {
+    return { ok: true, data: JSON.parse(text) as unknown };
+  } catch {
+    return {
+      ok: false,
+      message: `${label}: invalid JSON (${res.status}): ${text.slice(0, 160)}${text.length > 160 ? "…" : ""}`,
+    };
+  }
+}
+
+export default function Dashboard() {
+  const [items, setItems] = useState<WasteItem[]>([]);
+  const [totalVolume, setTotalVolume] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isLive, setIsLive] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const prevCountRef = useRef(0);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      const body = await readJsonBody(res, "/api/dashboard");
+      if (!body.ok) {
+        setFetchError(body.message);
+        setLastUpdated(new Date());
+        return;
+      }
+
+      const data = body.data as {
+        items?: WasteItem[];
+        totalVolume?: string;
+        totalItems?: number;
+        error?: string;
+      };
+
+      if (!res.ok) {
+        setFetchError(data.error ?? `API error (${res.status})`);
+        setLastUpdated(new Date());
+        return;
+      }
+
+      setFetchError(null);
+      const newItems = data.items;
+      const vol = data.totalVolume;
+      const count = data.totalItems;
+      const countNum = typeof count === "number" ? count : 0;
+
+      if (countNum > prevCountRef.current) {
+        prevCountRef.current = countNum;
+      }
+
+      setItems(Array.isArray(newItems) ? newItems : []);
+      setTotalVolume(Number.parseFloat(String(vol ?? "0")) || 0);
+      setTotalItems(countNum);
+      setLastUpdated(new Date());
+    } catch (e) {
+      console.error(e);
+      setFetchError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchData();
+    const interval = setInterval(() => {
+      if (isLive) void fetchData();
+    }, LIVE_POLL_MS);
+    return () => clearInterval(interval);
+  }, [isLive, fetchData]);
+
+  const trashCount = items.filter((i) => classifyItem(i.item_name).category === "trash").length;
+  const recycleCount = items.filter((i) => classifyItem(i.item_name).category === "recycle").length;
+  const compostCount = items.filter((i) => classifyItem(i.item_name).category === "compost").length;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-zinc-950 text-white p-6 md:p-10">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">🗑️ CarbinWatcher</h1>
+          <p className="text-zinc-500 text-sm mt-1">Real-time household waste intelligence</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="flex items-center gap-3">
+          <span
+            className={`w-2 h-2 rounded-full ${isLive ? "bg-green-400 animate-pulse" : "bg-zinc-600"}`}
+          />
+          <button
+            type="button"
+            onClick={() => setIsLive((v) => !v)}
+            className="text-xs text-zinc-400 hover:text-white transition"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {isLive ? "Live" : "Paused"}
+          </button>
+          {lastUpdated && (
+            <span className="text-xs text-zinc-600">
+              Updated {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
         </div>
-      </main>
-    </div>
+      </div>
+
+      {fetchError && (
+        <div
+          className="mb-6 rounded-xl border border-red-900/80 bg-red-950/40 px-4 py-3 text-sm text-red-200"
+          role="alert"
+        >
+          <span className="font-medium text-red-100">Could not load DynamoDB data.</span>{" "}
+          <span className="text-red-200/90">{fetchError}</span>
+        </div>
+      )}
+
+      <div className="mb-6">
+        <VolumeGauge totalVolume={totalVolume} totalItems={totalItems} maxVolume={500} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[
+          {
+            label: "Trash",
+            count: trashCount,
+            color: "text-red-400",
+            bg: "bg-red-950",
+            emoji: "🗑️",
+          },
+          {
+            label: "Recycle",
+            count: recycleCount,
+            color: "text-blue-400",
+            bg: "bg-blue-950",
+            emoji: "♻️",
+          },
+          {
+            label: "Compost",
+            count: compostCount,
+            color: "text-green-400",
+            bg: "bg-green-950",
+            emoji: "🌱",
+          },
+        ].map(({ label, count, color, bg, emoji }) => (
+          <div key={label} className={`${bg} rounded-2xl p-5 border border-zinc-800`}>
+            <div className="text-2xl mb-1">{emoji}</div>
+            <div className={`text-3xl font-bold ${color}`}>{count}</div>
+            <div className="text-zinc-400 text-sm mt-1">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ItemFeed items={items} />
+        <WasteClassifier />
+      </div>
+    </main>
   );
 }
