@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getWasteSnapshot } from "@/lib/wasteSnapshot";
+import { getWasteSnapshotCached } from "@/lib/wasteSnapshotCache";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const { totalVolume, totalItems } = await getWasteSnapshot();
+    const { items } = await getWasteSnapshotCached();
     return NextResponse.json(
-      { totalVolume, totalItems },
+      { items },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   } catch (err) {
