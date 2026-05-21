@@ -1,5 +1,7 @@
 # carbinwatcher-final
 
+> **Note:** The MQTT publisher and AWS IoT Core routing rule code is **not** in this repo — it lives on Omkar's laptop. This repo only contains the Next.js dashboard that reads classifications from DynamoDB. End-to-end pipeline (camera → MQTT → IoT Rule → DynamoDB) requires running the publisher from Omkar's machine.
+
 Household waste dashboard (Next.js on Vercel). Application code lives in **`user-dashboard/`**.
 
 ## Local setup

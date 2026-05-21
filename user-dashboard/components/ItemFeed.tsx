@@ -9,12 +9,12 @@ export default function ItemFeed({ items }: { items: WasteItem[] }) {
       <h2 className="text-zinc-400 text-[11px] uppercase tracking-widest mb-3 shrink-0">
         Live item feed
       </h2>
-      <div className="space-y-2 min-h-0 flex-1 max-h-[min(52vh,420px)] md:max-h-[min(48vh,380px)] overflow-y-auto pr-1 -mr-1">
+      <div className="space-y-2 min-h-0 flex-1 max-h-[70vh] overflow-y-auto pr-1 -mr-1">
         {items.length === 0 && (
           <p className="text-zinc-600 text-sm py-2">Waiting for items...</p>
         )}
         {items.map((item, index) => {
-          const { label, color, emoji, tip } = classifyItem(item.item_name);
+          const { label, color, emoji, tip } = classifyItem(item.item_name, item.category);
           return (
             <div
               key={`${item.id}::${index}`}

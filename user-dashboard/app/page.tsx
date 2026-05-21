@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import VolumeGauge from "@/components/VolumeGauge";
-import LiveWebcam from "@/components/LiveWebcam";
+import ImpactCards from "@/components/ImpactCards";
 import ItemFeed from "@/components/ItemFeed";
 import type { WasteItem } from "@/lib/wasteSnapshot";
 
@@ -44,15 +44,6 @@ async function readJsonBody(
 
 const CATEGORY_CARDS = [
   {
-    key: "special",
-    label: "Special",
-    long: "Special Recycling",
-    countKey: "specialRecyclingCount" as const,
-    color: "text-amber-400",
-    bg: "bg-amber-950/60",
-    emoji: "♻️",
-  },
-  {
     key: "compost",
     label: "Compost",
     long: "Compost",
@@ -71,13 +62,13 @@ const CATEGORY_CARDS = [
     emoji: "♻️",
   },
   {
-    key: "textile",
-    label: "Textile",
-    long: "Donate / Textile",
-    countKey: "textileRecycleCount" as const,
-    color: "text-cyan-400",
-    bg: "bg-cyan-950/50",
-    emoji: "♻️",
+    key: "ewaste",
+    label: "E-Waste",
+    long: "Electronic Waste",
+    countKey: "electronicWasteCount" as const,
+    color: "text-amber-400",
+    bg: "bg-amber-950/60",
+    emoji: "🔌",
   },
   {
     key: "trash",
@@ -97,8 +88,7 @@ export default function Dashboard() {
   const [trashCount, setTrashCount] = useState(0);
   const [recycleCount, setRecycleCount] = useState(0);
   const [compostCount, setCompostCount] = useState(0);
-  const [specialRecyclingCount, setSpecialRecyclingCount] = useState(0);
-  const [textileRecycleCount, setTextileRecycleCount] = useState(0);
+  const [electronicWasteCount, setElectronicWasteCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isLive, setIsLive] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -109,8 +99,7 @@ export default function Dashboard() {
     trashCount,
     recycleCount,
     compostCount,
-    specialRecyclingCount,
-    textileRecycleCount,
+    electronicWasteCount,
   };
 
   const fetchData = useCallback(async () => {
@@ -135,8 +124,7 @@ export default function Dashboard() {
         trashCount?: number;
         recycleCount?: number;
         compostCount?: number;
-        specialRecyclingCount?: number;
-        textileRecycleCount?: number;
+        electronicWasteCount?: number;
         error?: string;
       };
 
@@ -153,9 +141,8 @@ export default function Dashboard() {
       const t = asCount(data.trashCount);
       const r = asCount(data.recycleCount);
       const c = asCount(data.compostCount);
-      const s = asCount(data.specialRecyclingCount);
-      const x = asCount(data.textileRecycleCount);
-      const sumCategories = t + r + c + s + x;
+      const e = asCount(data.electronicWasteCount);
+      const sumCategories = t + r + c + e;
       const totalFromApi = asCount(data.totalItems);
       const itemsLogged = sumCategories > 0 ? sumCategories : totalFromApi;
 
@@ -169,8 +156,7 @@ export default function Dashboard() {
       setTrashCount(t);
       setRecycleCount(r);
       setCompostCount(c);
-      setSpecialRecyclingCount(s);
-      setTextileRecycleCount(x);
+      setElectronicWasteCount(e);
       setLastUpdated(new Date());
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -234,33 +220,32 @@ export default function Dashboard() {
           <VolumeGauge totalVolume={totalVolume} totalItems={totalItems} />
         </div>
 
-        <div className="mb-4 grid grid-cols-5 gap-1.5 sm:gap-2 md:mb-5 md:gap-3">
+        <div className="mb-4 md:mb-5">
+          <ImpactCards totalVolume={totalVolume} />
+        </div>
+
+        <div className="mb-4 grid grid-cols-4 gap-2 sm:gap-3 md:mb-5">
           {CATEGORY_CARDS.map(({ key, label, long, countKey, color, bg, emoji }) => (
             <div
               key={key}
               title={long}
-              className={`${bg} flex flex-col items-center justify-center rounded-xl border border-zinc-800/80 px-1 py-2.5 sm:rounded-2xl sm:py-3 md:py-3.5`}
+              className={`${bg} flex flex-col items-center justify-center rounded-xl border border-zinc-800/80 px-1 py-3 sm:rounded-2xl sm:py-4`}
             >
-              <span className="text-base sm:text-lg md:text-xl" aria-hidden>
+              <span className="text-lg sm:text-xl md:text-2xl" aria-hidden>
                 {emoji}
               </span>
-              <span className={`mt-0.5 text-lg font-bold tabular-nums sm:text-xl md:text-2xl ${color}`}>
+              <span className={`mt-1 text-xl font-bold tabular-nums sm:text-2xl md:text-3xl ${color}`}>
                 {counts[countKey]}
               </span>
-              <span className="mt-0.5 max-w-[4.5rem] truncate text-center text-[9px] leading-tight text-zinc-500 sm:max-w-none sm:text-[10px] md:text-xs">
+              <span className="mt-0.5 text-center text-[10px] leading-tight text-zinc-500 sm:text-xs md:text-sm">
                 {label}
               </span>
             </div>
           ))}
         </div>
 
-        <div className="grid min-h-0 gap-4 lg:grid-cols-2 lg:gap-5 lg:items-stretch">
-          <div className="min-h-0 flex flex-col lg:min-h-[min(50vh,420px)]">
-            <LiveWebcam compact />
-          </div>
-          <div className="min-h-0 flex flex-col lg:min-h-[min(50vh,420px)]">
-            <ItemFeed items={items} />
-          </div>
+        <div className="min-h-0 flex flex-col">
+          <ItemFeed items={items} />
         </div>
       </div>
     </main>

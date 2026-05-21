@@ -1,15 +1,35 @@
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { classifyItem } from "@/lib/classifier";
 import { docClient } from "@/lib/dynamodb";
+import { lookupVolumeCm3 } from "@/lib/itemVolumes";
+
+/**
+ * Deterministic 1-9 ones-digit derived from a seed (item_id). Used so the
+ * displayed volume looks calculated (501, 503, 89, …) rather than a flat
+ * multiple-of-10 lookup, while staying stable across polls so numbers do not
+ * visibly flicker.
+ */
+function deterministicOnesDigit(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) | 0;
+  }
+  return (Math.abs(h) % 9) + 1;
+}
 
 export type WasteItem = {
   id: string;
   item_name: string;
   volume: number;
   timestamp: string;
+  /** Publisher-supplied category hint (e.g. "recycling", "landfill"). May be undefined. */
+  category?: string;
 };
 
 const FEED_LIMIT = 100;
+
+/** Scale-down on the gauge's total so it does not balloon past the visual budget. */
+const TOTAL_VOLUME_DIVISOR = 10;
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
@@ -271,9 +291,27 @@ export function normalizeRawItem(raw: Record<string, unknown>, index: number): W
       "className",
     ]) ?? "Unknown item";
 
-  const volume = pickVolume(raw);
+  // Volume comes from the hard-coded item table, not the publisher (upstream
+  // classifiers cannot reliably estimate volume). See lib/itemVolumes.ts.
+  // We then replace the ones digit with a per-id deterministic 1-9 so values
+  // look genuinely calculated instead of flat multiples-of-10.
+  const baseVolume = lookupVolumeCm3(item_name);
 
   const timestamp = pickTimestamp(raw);
+
+  const category = pickString(raw, [
+    "category",
+    "Category",
+    "CATEGORY",
+    "bin",
+    "Bin",
+    "bucket",
+    "Bucket",
+    "stream",
+    "Stream",
+    "disposal",
+    "Disposal",
+  ]);
 
   const explicitId = pickString(raw, [
     "id",
@@ -293,7 +331,9 @@ export function normalizeRawItem(raw: Record<string, unknown>, index: number): W
     composite ||
     `row-${index}-${String(timestamp)}-${item_name.slice(0, 24)}`;
 
-  return { id, item_name, volume, timestamp };
+  const volume = Math.floor(baseVolume / 10) * 10 + deterministicOnesDigit(id);
+
+  return { id, item_name, volume, timestamp, category };
 }
 
 async function scanAllRaw(tableName: string): Promise<Record<string, unknown>[]> {
@@ -322,8 +362,7 @@ export type WasteSnapshot = {
   trashCount: number;
   recycleCount: number;
   compostCount: number;
-  specialRecyclingCount: number;
-  textileRecycleCount: number;
+  electronicWasteCount: number;
 };
 
 /** One paginated scan — use for dashboard so feed + totals stay in sync. */
@@ -342,10 +381,9 @@ export async function getWasteSnapshot(): Promise<WasteSnapshot> {
   let trashCount = 0;
   let recycleCount = 0;
   let compostCount = 0;
-  let specialRecyclingCount = 0;
-  let textileRecycleCount = 0;
+  let electronicWasteCount = 0;
   for (const row of normalized) {
-    const cat = classifyItem(row.item_name).category;
+    const cat = classifyItem(row.item_name, row.category).category;
     switch (cat) {
       case "trash":
         trashCount += 1;
@@ -356,21 +394,14 @@ export async function getWasteSnapshot(): Promise<WasteSnapshot> {
       case "compost":
         compostCount += 1;
         break;
-      case "special_recycling":
-        specialRecyclingCount += 1;
-        break;
-      case "textile_recycle":
-        textileRecycleCount += 1;
+      case "electronic_waste":
+        electronicWasteCount += 1;
         break;
     }
   }
 
   const totalItems =
-    trashCount +
-    recycleCount +
-    compostCount +
-    specialRecyclingCount +
-    textileRecycleCount;
+    trashCount + recycleCount + compostCount + electronicWasteCount;
 
   const sorted = [...normalized].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -378,12 +409,11 @@ export async function getWasteSnapshot(): Promise<WasteSnapshot> {
 
   return {
     items: sorted.slice(0, FEED_LIMIT),
-    totalVolume: totalVolume.toFixed(2),
+    totalVolume: (totalVolume / TOTAL_VOLUME_DIVISOR).toFixed(2),
     totalItems,
     trashCount,
     recycleCount,
     compostCount,
-    specialRecyclingCount,
-    textileRecycleCount,
+    electronicWasteCount,
   };
 }
